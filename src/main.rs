@@ -23,27 +23,24 @@ fn read_msr(msr_node: &mut File, msr_addr: u64) -> Result<[u8; 8], ()> {
     Ok(buf)
 }
 
-fn print_msr(msr_addr: u64, msr_nodes: &mut Vec<File>) {
-    for core in 0..msr_nodes.len() {
-        let node = &mut msr_nodes[core as usize];
-        let buf = read_msr(node, msr_addr).expect("failed to read msr");
+fn print_msr(msr_node: &mut File, msr_addr: u64) {
+    let buf = read_msr(msr_node, msr_addr).expect("failed to read msr");
+    print_msr_val(&buf);
+}
 
-        // Printing currently assumes little endian.
-        print!("{}: ", core);
-        for byte in (0..buf.len()).rev() {
-            if byte == 3 {
-                print!("  ");
-            }
-            print!("{:08b} ", buf[byte]);
+fn print_msr_val(buf: &[u8; 8]) {
+    for byte in (0..buf.len()).rev() {
+        if byte == 3 {
+            print!("  ");
         }
-        print!("      ");
-        for byte in (0..buf.len()).rev() {
-            if byte == 3 {
-                print!("  ");
-            }
-            print!("{:02x} ", buf[byte]);
+        print!("{:08b} ", buf[byte]);
+    }
+    print!("      ");
+    for byte in (0..buf.len()).rev() {
+        if byte == 3 {
+            print!("  ");
         }
-        println!();
+        print!("{:02x} ", buf[byte]);
     }
 }
 
@@ -93,5 +90,9 @@ fn main() {
         }
     }
     flip_bits(&mut msr_nodes, msr_addr, bits);
-    print_msr(msr_addr, &mut msr_nodes);
+    for (core, mut msr_node) in msr_nodes.iter_mut().enumerate() {
+        print!("{}: ", core);
+        print_msr(&mut msr_node, msr_addr);
+        println!();
+    }
 }
