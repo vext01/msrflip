@@ -12,17 +12,21 @@ fn open_msr_nodes(num_cores: u32) -> Vec<File> {
     nodes
 }
 
-fn print_msr(msr_addr: u64, msr_nodes: &mut Vec<File>) {
-    let mut buf = [0; 8]; // we must read exactly 8 bytes
+fn read_msr(msr_node: &mut File, msr_addr: u64) -> Result<[u8; 8], ()> {
+    let mut buf = [0; 8];
     let seek_addr = SeekFrom::Start(msr_addr);
+    msr_node.seek(seek_addr).expect("failed to seek");
+    let res = msr_node.read_exact(&mut buf);
+    if res.is_err() {
+        return Err(());
+    }
+    Ok(buf)
+}
+
+fn print_msr(msr_addr: u64, msr_nodes: &mut Vec<File>) {
     for core in 0..msr_nodes.len() {
         let node = &mut msr_nodes[core as usize];
-        node.seek(seek_addr).expect("failed to seek");
-        let res = node.read_exact(&mut buf);
-        if res.is_err() {
-            println!("failed to read MSR. Bad address?");
-            break;
-        }
+        let buf = read_msr(node, msr_addr).expect("failed to read msr");
 
         // Printing currently assumes little endian.
         print!("{}: ", core);
