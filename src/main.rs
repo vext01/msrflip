@@ -5,6 +5,7 @@ use std::process::exit;
 
 const NUM_CORES: u16 = 4; // XXX
 
+// Represents a range of MSR bits on a range of cores
 #[derive(Debug)]
 struct BitSpec {
     cores: Range<u16>,
@@ -95,6 +96,24 @@ fn parse_range(rng_str: &str) -> Result<Range<u16>, ()> {
     ret
 }
 
+fn parse_bitspecs(args: std::env::Args) -> Vec<BitSpec> {
+    let mut bitspecs: Vec<BitSpec> = Vec::new();
+    for bit_str in args {
+        let split: Vec<&str> = bit_str.split(':').collect();
+        let (cores, bits) = match split.len() {
+            1 => (Some(0..NUM_CORES), parse_range(split[0]).ok()),
+            2 => (parse_range(split[0]).ok(), parse_range(split[1]).ok()),
+            _ => (None, None),
+        };
+        if cores.is_none() || bits.is_none() {
+            println!("bad core/bits spec");
+            exit(1);
+        }
+        bitspecs.push(BitSpec{cores: cores.unwrap(), bits: bits.unwrap()});
+    }
+    bitspecs
+}
+
 fn main() {
     let mut args = std::env::args();
     let _ = args.next();
@@ -113,21 +132,7 @@ fn main() {
     }
     let msr_addr = msr_addr.unwrap();
 
-    // parse bit specification
-    let mut bitspecs: Vec<BitSpec> = Vec::new();
-    for bit_str in args {
-        let split: Vec<&str> = bit_str.split(':').collect();
-        let (cores, bits) = match split.len() {
-            1 => (Some(0..NUM_CORES), parse_range(split[0]).ok()),
-            2 => (parse_range(split[0]).ok(), parse_range(split[1]).ok()),
-            _ => (None, None),
-        };
-        if cores.is_none() || bits.is_none() {
-            println!("bad core/bits spec");
-            exit(1);
-        }
-        bitspecs.push(BitSpec{cores: cores.unwrap(), bits: bits.unwrap()});
-    }
+    let bitspecs: Vec<BitSpec> = parse_bitspecs(args);
     flip_bits(&mut msr_nodes, msr_addr, &bitspecs);
     for (core, mut msr_node) in msr_nodes.iter_mut().enumerate() {
         print!("{}: ", core);
