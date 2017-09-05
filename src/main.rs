@@ -1,9 +1,17 @@
 use std::io::{Read, Seek, SeekFrom};
 use std::fs::File;
+use std::ops::Range;
+use std::process::exit;
 
-const NUM_CORES: u32 = 4; // XXX
+const NUM_CORES: u16 = 4; // XXX
 
-fn open_msr_nodes(num_cores: u32) -> Vec<File> {
+#[derive(Debug)]
+struct BitSpec {
+    cores: Range<u16>,
+    bits: Range<u16>,
+}
+
+fn open_msr_nodes(num_cores: u16) -> Vec<File> {
     let mut nodes = Vec::new();
     for i in 0..num_cores {
         let path = format!("/dev/cpu/{}/msr", i);
@@ -44,9 +52,9 @@ fn print_msr_val(buf: &[u8; 8]) {
     }
 }
 
-fn flip_bits(msr_nodes: &mut Vec<File>, msr_addr: u64, bits: Vec<u8>) {
-    for bit in bits {
-        // XXX
+fn flip_bits(msr_nodes: &mut Vec<File>, msr_addr: u64, bitspecs: &Vec<BitSpec>) {
+    for bitspec in bitspecs {
+        println!("{:?}", bitspec);
     }
 }
 
@@ -59,6 +67,31 @@ fn parse_msr_addr(input: &str) -> Option<u64> {
         // decimal
         ret = input.parse().ok();
     }
+    ret
+}
+
+fn parse_range(rng_str: &str) -> Result<Range<u16>, ()> {
+    let parts: Vec<&str> = rng_str.split('-').collect();
+    let ret = match parts.len() {
+        1 => {
+            parts[0].parse().map_err(|_| ())
+                .and_then(|start| {
+                    Ok(start..start + 1)
+            })
+        },
+        2 => {
+            parts[0].parse()
+                .map_err(|_| ())
+                .and_then(|start| {
+                    parts[1].parse()
+                    .map_err(|_| ())
+                    .and_then(|end| {
+                        Ok(start..end)
+                })
+            })
+        },
+        _ => Err(()),
+    };
     ret
 }
 
@@ -80,16 +113,22 @@ fn main() {
     }
     let msr_addr = msr_addr.unwrap();
 
-    // parse bits
-    let bits: Vec<u8> = Vec::new();
+    // parse bit specification
+    let mut bitspecs: Vec<BitSpec> = Vec::new();
     for bit_str in args {
-        let bit: Option<u8> = bit_str.parse().ok();
-        if bit.is_none() {
-            println!("Bad bit: {}", bit_str);
-            return;
+        let split: Vec<&str> = bit_str.split(':').collect();
+        let (cores, bits) = match split.len() {
+            1 => (Some(0..NUM_CORES), parse_range(split[0]).ok()),
+            2 => (parse_range(split[0]).ok(), parse_range(split[1]).ok()),
+            _ => (None, None),
+        };
+        if cores.is_none() || bits.is_none() {
+            println!("bad core/bits spec");
+            exit(1);
         }
+        bitspecs.push(BitSpec{cores: cores.unwrap(), bits: bits.unwrap()});
     }
-    flip_bits(&mut msr_nodes, msr_addr, bits);
+    flip_bits(&mut msr_nodes, msr_addr, &bitspecs);
     for (core, mut msr_node) in msr_nodes.iter_mut().enumerate() {
         print!("{}: ", core);
         print_msr(&mut msr_node, msr_addr);
